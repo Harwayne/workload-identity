@@ -12,6 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/oauth2"
+	"google.golang.org/api/option"
+
 	"gopkg.in/yaml.v2"
 
 	"google.golang.org/api/cloudresourcemanager/v1"
@@ -145,7 +148,7 @@ func getKSAsWIAnotation(ctx context.Context, client kubernetes.Interface, ns, ks
 }
 
 func ksaHasAccessToGSA(ctx context.Context, wiPool, ns, ksaName, gsaEmail string) (bool, error) {
-	iamSVC, err := iam.NewService(ctx)
+	iamSVC, err := iam.NewService(ctx, getGCPOptions()...)
 	if err != nil {
 		return false, fmt.Errorf("creating IAM.Service: %w", err)
 	}
@@ -168,6 +171,45 @@ func ksaHasAccessToGSA(ctx context.Context, wiPool, ns, ksaName, gsaEmail string
 	return false, nil
 }
 
+func getGCPOptions() []option.ClientOption {
+	var options []option.ClientOption
+	if ts := getTokenSource(); ts != nil {
+		options = append(options, option.WithTokenSource(ts))
+	}
+	return options
+}
+
+func getTokenSource() oauth2.TokenSource {
+	gct, err := getGcloudToken()
+	if err != nil {
+		return nil
+	}
+	return &ts{
+		token: gct,
+	}
+}
+
+type ts struct {
+	token string
+}
+
+func (ts *ts) Token() (*oauth2.Token, error) {
+	return &oauth2.Token{
+		AccessToken: ts.token,
+		TokenType:   "Bearer",
+	}, nil
+}
+
+func getGcloudToken() (string, error) {
+	cmd := exec.Command("gcloud", "auth", "print-access-token")
+	o, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	t := string(o)
+	return strings.TrimSpace(t), nil
+}
+
 func getGSAAPIResource(gsaEmail string) string {
 	sp := strings.Split(gsaEmail, "@")
 	sp = strings.Split(sp[1], ".")
@@ -183,7 +225,7 @@ func getClusterAPIName(project, location, name string) string {
 	return fmt.Sprintf("projects/%s/locations/%s/clusters/%s", project, location, name)
 }
 func getWIPool(ctx context.Context, clusterAPIName string) (string, error) {
-	gkeSVC, err := container.NewService(ctx)
+	gkeSVC, err := container.NewService(ctx, getGCPOptions()...)
 	if err != nil {
 		return "", fmt.Errorf("creating GKE.Service: %w", err)
 	}
@@ -196,7 +238,7 @@ func getWIPool(ctx context.Context, clusterAPIName string) (string, error) {
 }
 
 func getGSAsRolesOnProject(ctx context.Context, project, gsaEmail string) ([]string, error) {
-	crmSVC, err := cloudresourcemanager.NewService(ctx)
+	crmSVC, err := cloudresourcemanager.NewService(ctx, getGCPOptions()...)
 	if err != nil {
 		return []string{}, fmt.Errorf("creating CloudResourceManager.Service: %w", err)
 	}
