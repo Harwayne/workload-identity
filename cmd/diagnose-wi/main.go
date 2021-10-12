@@ -211,10 +211,7 @@ func getGcloudToken() (string, error) {
 }
 
 func getGSAAPIResource(gsaEmail string) string {
-	sp := strings.Split(gsaEmail, "@")
-	sp = strings.Split(sp[1], ".")
-	proj := sp[0]
-	return fmt.Sprintf("projects/%s/serviceAccounts/%s", proj, gsaEmail)
+	return fmt.Sprintf("projects/-/serviceAccounts/%s", gsaEmail)
 }
 
 func ksaIAMPolicyMember(wiPool, ns, ksaName string) string {
